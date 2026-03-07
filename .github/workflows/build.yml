@@ -46,8 +46,8 @@ jobs:
           go get github.com/metacubex/mihomo@${{ github.event.inputs.mihomo_version }}
           go mod tidy
 
-      - name: Generate go.sum if missing
-        run: go mod download
+      - name: Prepare modules
+        run: go mod tidy
 
       - name: Install Android NDK
         uses: nttld/setup-ndk@v1
@@ -64,9 +64,9 @@ jobs:
           GOARM: ${{ matrix.goarm }}
           CC: \( {{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/ \){{ matrix.triple }}21-clang
           CGO_LDFLAGS: "-Wl,-soname,libmihomo.so"
-          GOFLAGS: "-mod=mod"
         run: |
           go build \
+            -mod=mod \
             -buildmode=c-shared \
             -trimpath \
             -ldflags="-s -w" \
@@ -99,7 +99,8 @@ jobs:
           go get github.com/metacubex/mihomo@${{ github.event.inputs.mihomo_version }}
           go mod tidy
 
-      - run: go mod download
+      - name: Prepare modules
+        run: go mod tidy
 
       - name: Get mihomo version
         id: ver
