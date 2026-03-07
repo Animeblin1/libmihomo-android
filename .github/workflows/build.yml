@@ -12,9 +12,38 @@ on:
         default: ""
 
 jobs:
-  build:
+  prepare:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_ver.outputs.version }}
+      tag: ${{ steps.get_ver.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          
+      - name: Update mihomo version
+        if: ${{ github.event.inputs.mihomo_version != '' }}
+        run: |
+          go get github.com/metacubex/mihomo@${{ github.event.inputs.mihomo_version }}
+          
+      - name: Determine version and tag
+        id: get_ver
+        run: |
+          VER=$(go list -m -f '{{.Version}}' github.com/metacubex/mihomo)
+          echo "version=$VER" >> $GITHUB_OUTPUT
+          
+          TAG="${{ github.ref_name }}"
+          if[ -z "$TAG" ] || [ "$TAG" = "refs/heads/main" ] ||[ "$TAG" = "main" ]; then
+            TAG="$VER"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
 
+  build:
+    needs: prepare
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -38,13 +67,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-          cache: false
+          cache: true
 
       - name: Update mihomo version
         if: ${{ github.event.inputs.mihomo_version != '' }}
-        run: |
-          go get github.com/metacubex/mihomo@${{ github.event.inputs.mihomo_version }}
-          go mod tidy
+        run: go get github.com/metacubex/mihomo@${{ github.event.inputs.mihomo_version }}
 
       - name: Prepare modules
         run: go mod tidy
@@ -63,61 +90,35 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           GOARM: ${{ matrix.goarm }}
           CGO_LDFLAGS: "-Wl,-soname,libmihomo.so"
-          GOFLAGS: "-mod=mod"
         run: |
-          export NDK_PATH="${{ steps.ndk.outputs.ndk-path }}"
-          export TRIPLE="${{ matrix.triple }}"
-          export CC="\( {NDK_PATH}/toolchains/llvm/prebuilt/linux-x86_64/bin/ \){TRIPLE}21-clang"
-          export CXX="\( {NDK_PATH}/toolchains/llvm/prebuilt/linux-x86_64/bin/ \){TRIPLE}21-clang++"
+          export CC="${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.triple }}21-clang"
+          export CXX="${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.triple }}21-clang++"
+          
           echo "CC=$CC"
-          ls "$CC" || echo "CC not found"
+          
           go build \
             -buildmode=c-shared \
             -trimpath \
+            -buildvcs=false \
             -ldflags="-s -w" \
             -o libmihomo_${{ matrix.abi }}.so \
             .
+            
           ls -lh libmihomo_${{ matrix.abi }}.so
 
       - uses: actions/upload-artifact@v4
         with:
           name: libmihomo_${{ matrix.abi }}
           path: libmihomo_${{ matrix.abi }}.so
+          retention-days: 3
 
   release:
-    needs: build
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-          cache: false
-
-      - name: Update mihomo version
-        if: ${{ github.event.inputs.mihomo_version != '' }}
-        run: |
-          go get github.com/metacubex/mihomo@${{ github.event.inputs.mihomo_version }}
-          go mod tidy
-
-      - name: Prepare modules
-        run: go mod tidy
-
-      - name: Get mihomo version
-        id: ver
-        run: |
-          VER=$(go list -m -json github.com/metacubex/mihomo | python3 -c "import sys,json; print(json.load(sys.stdin)['Version'])")
-          echo "mihomo=$VER" >> $GITHUB_OUTPUT
-          TAG="${{ github.ref_name }}"
-          if [ -z "$TAG" ] || [ "$TAG" = "refs/heads/main" ]; then
-            TAG="$VER"
-          fi
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -128,10 +129,10 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.ver.outputs.tag }}
-          name: "libmihomo ${{ steps.ver.outputs.tag }}"
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: "libmihomo ${{ needs.prepare.outputs.tag }}"
           body: |
-            Mihomo (Clash.Meta) **${{ steps.ver.outputs.mihomo }}** скомпилирован как Android shared library.
+            Mihomo (Clash.Meta) **${{ needs.prepare.outputs.version }}** скомпилирован как Android shared library.
 
             | Файл | ABI | Устройства |
             |---|---|---|
