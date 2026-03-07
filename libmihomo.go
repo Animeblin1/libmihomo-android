@@ -69,10 +69,7 @@ func MihomoStart(configPathC *C.char, workDirC *C.char) *C.char {
 
 	log.SetLevel(log.WARNING)
 
-	if err := executor.ApplyConfig(cfg, true); err != nil {
-		res.Error = fmt.Sprintf("apply config: %v", err)
-		return jsonResult(res)
-	}
+	executor.ApplyConfig(cfg, true)
 
 	running = true
 	res.OK = true
@@ -111,10 +108,9 @@ func MihomoReload(configPathC *C.char) *C.char {
 		res.Error = fmt.Sprintf("build: %v", err)
 		return jsonResult(res)
 	}
-	if err := executor.ApplyConfig(cfg, false); err != nil {
-		res.Error = fmt.Sprintf("apply: %v", err)
-		return jsonResult(res)
-	}
+
+	executor.ApplyConfig(cfg, false)
+
 	res.OK = true
 	return jsonResult(res)
 }
