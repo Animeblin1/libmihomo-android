@@ -1,0 +1,66 @@
+name: Auto-update mihomo
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: false
+
+      - name: Get latest mihomo release
+        id: latest
+        run: |
+          TAG=$(curl -sf https://api.github.com/repos/MetaCubeX/mihomo/releases/latest \
+            | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])")
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Latest mihomo: $TAG"
+
+      - name: Get current version in go.mod
+        id: current
+        run: |
+          VER=$(grep 'github.com/metacubex/mihomo' go.mod | awk '{print $2}')
+          echo "ver=$VER" >> $GITHUB_OUTPUT
+          echo "Current in go.mod: $VER"
+
+      - name: Compare versions
+        id: diff
+        run: |
+          LATEST="${{ steps.latest.outputs.tag }}"
+          CURRENT="${{ steps.current.outputs.ver }}"
+          if [ "$LATEST" = "$CURRENT" ]; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "Already up to date ($CURRENT)"
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "Update needed: $CURRENT → $LATEST"
+          fi
+
+      - name: Update go.mod and go.sum
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          go get github.com/metacubex/mihomo@${{ steps.latest.outputs.tag }}
+          go mod tidy
+          go mod download
+
+      - name: Commit and tag
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add go.mod go.sum
+          git commit -m "chore: bump mihomo to ${{ steps.latest.outputs.tag }}"
+          git tag ${{ steps.latest.outputs.tag }}
+          git push origin main
+          git push origin ${{ steps.latest.outputs.tag }}
