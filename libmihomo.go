@@ -16,6 +16,7 @@ import (
 	"github.com/metacubex/mihomo/component/ca"
 	"github.com/metacubex/mihomo/config"
 	"github.com/metacubex/mihomo/constant"
+	"github.com/metacubex/mihomo/hub"
 	"github.com/metacubex/mihomo/hub/executor"
 	"github.com/metacubex/mihomo/log"
 )
@@ -45,7 +46,7 @@ func MihomoStart(configPathC *C.char, workDirC *C.char) *C.char {
 		running = false
 	}
 
-	if err := os.MkdirAll(workDir, 0755); err != nil {
+	if err := os.MkdirAll(workDir, 0o755); err != nil {
 		res.Error = fmt.Sprintf("mkdir workdir: %v", err)
 		return jsonResult(res)
 	}
@@ -55,7 +56,13 @@ func MihomoStart(configPathC *C.char, workDirC *C.char) *C.char {
 
 	ca.ResetCertificate()
 
-	rawCfg, err := config.UnmarshalRawConfig(readFile(configPath))
+	cfgBytes, err := readFile(configPath)
+	if err != nil {
+		res.Error = fmt.Sprintf("read config: %v", err)
+		return jsonResult(res)
+	}
+
+	rawCfg, err := config.UnmarshalRawConfig(cfgBytes)
 	if err != nil {
 		res.Error = fmt.Sprintf("parse config: %v", err)
 		return jsonResult(res)
@@ -69,7 +76,8 @@ func MihomoStart(configPathC *C.char, workDirC *C.char) *C.char {
 
 	log.SetLevel(log.WARNING)
 
-	executor.ApplyConfig(cfg, true)
+	// ВАЖНО: hub.ApplyConfig поднимает external-controller (REST API)
+	hub.ApplyConfig(cfg)
 
 	running = true
 	res.OK = true
@@ -80,6 +88,7 @@ func MihomoStart(configPathC *C.char, workDirC *C.char) *C.char {
 func MihomoStop() {
 	mu.Lock()
 	defer mu.Unlock()
+
 	if running {
 		executor.Shutdown()
 		running = false
@@ -98,18 +107,27 @@ func MihomoReload(configPathC *C.char) *C.char {
 	}
 
 	configPath := C.GoString(configPathC)
-	rawCfg, err := config.UnmarshalRawConfig(readFile(configPath))
+
+	cfgBytes, err := readFile(configPath)
+	if err != nil {
+		res.Error = fmt.Sprintf("read config: %v", err)
+		return jsonResult(res)
+	}
+
+	rawCfg, err := config.UnmarshalRawConfig(cfgBytes)
 	if err != nil {
 		res.Error = fmt.Sprintf("parse: %v", err)
 		return jsonResult(res)
 	}
+
 	cfg, err := config.ParseRawConfig(rawCfg)
 	if err != nil {
 		res.Error = fmt.Sprintf("build: %v", err)
 		return jsonResult(res)
 	}
 
-	executor.ApplyConfig(cfg, false)
+	// ВАЖНО: через hub, чтобы REST оставался рабочим
+	hub.ApplyConfig(cfg)
 
 	res.OK = true
 	return jsonResult(res)
@@ -124,6 +142,7 @@ func MihomoVersion() *C.char {
 func MihomoIsRunning() C.int {
 	mu.Lock()
 	defer mu.Unlock()
+
 	if running {
 		return 1
 	}
@@ -135,12 +154,15 @@ func MihomoFree(ptr *C.char) {
 	C.free(unsafe.Pointer(ptr))
 }
 
-func readFile(path string) []byte {
+func readFile(path string) ([]byte, error) {
 	data, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
-		return nil
+		return nil, err
 	}
-	return data
+	if len(data) == 0 {
+		return nil, fmt.Errorf("configuration file is empty")
+	}
+	return data, nil
 }
 
 func jsonResult(v interface{}) *C.char {
