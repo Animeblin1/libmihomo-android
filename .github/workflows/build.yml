@@ -23,11 +23,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
+          cache: false
           
       - name: Update mihomo version
         if: ${{ github.event.inputs.mihomo_version != '' }}
-        run: |
-          go get github.com/metacubex/mihomo@${{ github.event.inputs.mihomo_version }}
+        run: go get github.com/metacubex/mihomo@${{ github.event.inputs.mihomo_version }}
+          
+      - name: Prepare modules
+        run: go mod tidy
           
       - name: Determine version and tag
         id: get_ver
@@ -36,7 +39,7 @@ jobs:
           echo "version=$VER" >> $GITHUB_OUTPUT
           
           TAG="${{ github.ref_name }}"
-          if[ -z "$TAG" ] || [ "$TAG" = "refs/heads/main" ] ||[ "$TAG" = "main" ]; then
+          if [ -z "$TAG" ] || [ "$TAG" = "refs/heads/main" ] ||[ "$TAG" = "main" ]; then
             TAG="$VER"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
@@ -67,7 +70,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-          cache: true
+          cache: false
 
       - name: Update mihomo version
         if: ${{ github.event.inputs.mihomo_version != '' }}
@@ -113,7 +116,7 @@ jobs:
           retention-days: 3
 
   release:
-    needs: [prepare, build]
+    needs:[prepare, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
