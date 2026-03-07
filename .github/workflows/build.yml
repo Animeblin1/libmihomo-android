@@ -1,0 +1,138 @@
+name: Build libmihomo Android
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      mihomo_version:
+        description: "Версия mihomo (например v1.19.20). Пусто = взять из go.mod"
+        required: false
+        default: ""
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            goarch: arm64
+            goarm: ""
+            triple: aarch64-linux-android
+          - abi: armeabi-v7a
+            goarch: arm
+            goarm: "7"
+            triple: armv7a-linux-androideabi
+          - abi: x86_64
+            goarch: amd64
+            goarm: ""
+            triple: x86_64-linux-android
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: false
+
+      - name: Update mihomo version
+        if: ${{ github.event.inputs.mihomo_version != '' }}
+        run: |
+          go get github.com/metacubex/mihomo@${{ github.event.inputs.mihomo_version }}
+          go mod tidy
+
+      - name: Generate go.sum if missing
+        run: go mod download
+
+      - name: Install Android NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r26d
+          add-to-path: false
+
+      - name: Build ${{ matrix.abi }}
+        env:
+          CGO_ENABLED: "1"
+          GOOS: android
+          GOARCH: ${{ matrix.goarch }}
+          GOARM: ${{ matrix.goarm }}
+          CC: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.triple }}21-clang
+          CGO_LDFLAGS: "-Wl,-soname,libmihomo.so"
+        run: |
+          go build \
+            -buildmode=c-shared \
+            -trimpath \
+            -ldflags="-s -w" \
+            -o libmihomo_${{ matrix.abi }}.so \
+            .
+          ls -lh libmihomo_${{ matrix.abi }}.so
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libmihomo_${{ matrix.abi }}
+          path: libmihomo_${{ matrix.abi }}.so
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: false
+
+      - name: Update mihomo version
+        if: ${{ github.event.inputs.mihomo_version != '' }}
+        run: |
+          go get github.com/metacubex/mihomo@${{ github.event.inputs.mihomo_version }}
+          go mod tidy
+
+      - run: go mod download
+
+      - name: Get mihomo version
+        id: ver
+        run: |
+          VER=$(go list -m -json github.com/metacubex/mihomo | python3 -c "import sys,json; print(json.load(sys.stdin)['Version'])")
+          echo "mihomo=$VER" >> $GITHUB_OUTPUT
+          # tag: if triggered by push-tag use that, else use mihomo version
+          TAG="${{ github.ref_name }}"
+          if [ -z "$TAG" ] || [ "$TAG" = "refs/heads/main" ]; then
+            TAG="$VER"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh artifacts/
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: "libmihomo ${{ steps.ver.outputs.tag }}"
+          body: |
+            Mihomo (Clash.Meta) **${{ steps.ver.outputs.mihomo }}** скомпилирован как Android shared library.
+
+            | Файл | ABI | Устройства |
+            |---|---|---|
+            | `libmihomo_arm64-v8a.so` | arm64 | Все современные Android |
+            | `libmihomo_armeabi-v7a.so` | armv7 | 32-bit ARM |
+            | `libmihomo_x86_64.so` | x86_64 | Эмуляторы |
+
+            Плагин подтягивает нужный файл автоматически по ABI устройства.
+          files: artifacts/*.so
+          make_latest: true
