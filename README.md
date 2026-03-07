@@ -1,1 +1,1 @@
-# libmihomo-android
+[![Build libmihomo Android](https://github.com/Animeblin1/libmihomo-android/actions/workflows/build.yml/badge.svg?event=release)](https://github.com/Animeblin1/libmihomo-android/actions/workflows/build.yml)
