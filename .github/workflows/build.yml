@@ -65,7 +65,9 @@ jobs:
           CGO_LDFLAGS: "-Wl,-soname,libmihomo.so"
           GOFLAGS: "-mod=mod"
         run: |
-          export CC="\( {{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/ \){{ matrix.triple }}21-clang"
+          export NDK_PATH="${{ steps.ndk.outputs.ndk-path }}"
+          export TRIPLE="${{ matrix.triple }}"
+          export CC="\( {NDK_PATH}/toolchains/llvm/prebuilt/linux-x86_64/bin/ \){TRIPLE}21-clang"
           go build \
             -buildmode=c-shared \
             -trimpath \
