@@ -62,8 +62,9 @@ jobs:
           GOOS: android
           GOARCH: ${{ matrix.goarch }}
           GOARM: ${{ matrix.goarm }}
-          CC: ${{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/${{ matrix.triple }}21-clang
+          CC: \( {{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/ \){{ matrix.triple }}21-clang
           CGO_LDFLAGS: "-Wl,-soname,libmihomo.so"
+          GOFLAGS: "-mod=mod"
         run: |
           go build \
             -buildmode=c-shared \
@@ -105,7 +106,6 @@ jobs:
         run: |
           VER=$(go list -m -json github.com/metacubex/mihomo | python3 -c "import sys,json; print(json.load(sys.stdin)['Version'])")
           echo "mihomo=$VER" >> $GITHUB_OUTPUT
-          # tag: if triggered by push-tag use that, else use mihomo version
           TAG="${{ github.ref_name }}"
           if [ -z "$TAG" ] || [ "$TAG" = "refs/heads/main" ]; then
             TAG="$VER"
