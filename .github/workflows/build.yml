@@ -68,6 +68,9 @@ jobs:
           export NDK_PATH="${{ steps.ndk.outputs.ndk-path }}"
           export TRIPLE="${{ matrix.triple }}"
           export CC="\( {NDK_PATH}/toolchains/llvm/prebuilt/linux-x86_64/bin/ \){TRIPLE}21-clang"
+          export CXX="\( {NDK_PATH}/toolchains/llvm/prebuilt/linux-x86_64/bin/ \){TRIPLE}21-clang++"
+          echo "CC=$CC"
+          ls "$CC" || echo "CC not found"
           go build \
             -buildmode=c-shared \
             -trimpath \
