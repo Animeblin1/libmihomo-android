@@ -62,10 +62,10 @@ jobs:
           GOOS: android
           GOARCH: ${{ matrix.goarch }}
           GOARM: ${{ matrix.goarm }}
-          CC: \( {{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/ \){{ matrix.triple }}21-clang
           CGO_LDFLAGS: "-Wl,-soname,libmihomo.so"
           GOFLAGS: "-mod=mod"
         run: |
+          export CC="\( {{ steps.ndk.outputs.ndk-path }}/toolchains/llvm/prebuilt/linux-x86_64/bin/ \){{ matrix.triple }}21-clang"
           go build \
             -buildmode=c-shared \
             -trimpath \
