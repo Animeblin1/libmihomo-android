@@ -14,7 +14,6 @@ import (
 	"unsafe"
 
 	"github.com/metacubex/mihomo/component/ca"
-	"github.com/metacubex/mihomo/config"
 	"github.com/metacubex/mihomo/constant"
 	"github.com/metacubex/mihomo/hub"
 	"github.com/metacubex/mihomo/hub/executor"
@@ -56,21 +55,15 @@ func MihomoStart(configPathC *C.char, workDirC *C.char) *C.char {
 
 	ca.ResetCertificate()
 
-	cfgBytes, err := readFile(configPath)
+	_, err := readFile(configPath)
 	if err != nil {
 		res.Error = fmt.Sprintf("read config: %v", err)
 		return jsonResult(res)
 	}
 
-	rawCfg, err := config.UnmarshalRawConfig(cfgBytes)
+	cfg, err := executor.ParseWithPath(configPath)
 	if err != nil {
 		res.Error = fmt.Sprintf("parse config: %v", err)
-		return jsonResult(res)
-	}
-
-	cfg, err := config.ParseRawConfig(rawCfg)
-	if err != nil {
-		res.Error = fmt.Sprintf("build config: %v", err)
 		return jsonResult(res)
 	}
 
@@ -107,22 +100,17 @@ func MihomoReload(configPathC *C.char) *C.char {
 	}
 
 	configPath := C.GoString(configPathC)
+	constant.SetConfig(configPath)
 
-	cfgBytes, err := readFile(configPath)
+	_, err := readFile(configPath)
 	if err != nil {
 		res.Error = fmt.Sprintf("read config: %v", err)
 		return jsonResult(res)
 	}
 
-	rawCfg, err := config.UnmarshalRawConfig(cfgBytes)
+	cfg, err := executor.ParseWithPath(configPath)
 	if err != nil {
 		res.Error = fmt.Sprintf("parse: %v", err)
-		return jsonResult(res)
-	}
-
-	cfg, err := config.ParseRawConfig(rawCfg)
-	if err != nil {
-		res.Error = fmt.Sprintf("build: %v", err)
 		return jsonResult(res)
 	}
 
